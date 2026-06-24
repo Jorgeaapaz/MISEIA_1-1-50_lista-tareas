@@ -1,11 +1,19 @@
 'use client'
 
 import { useState, useEffect, useTransition } from 'react'
+import { filtrarTareas } from '@/lib/filtrarTareas'
+import type { FiltroCompletada, TerminosBusqueda } from '@/lib/filtrarTareas'
 
 interface Tarea {
   _id: string
   titulo: string
   completada: boolean
+}
+
+const ETIQUETA_ESTADO: Record<FiltroCompletada, string> = {
+  todas: 'Todas',
+  completadas: 'Completadas',
+  pendientes: 'Pendientes',
 }
 
 export default function ListaTareas() {
@@ -15,17 +23,22 @@ export default function ListaTareas() {
   const [editandoTexto, setEditandoTexto] = useState('')
   const [isPending, startTransition] = useTransition()
 
+  const [busquedaTitulo, setBusquedaTitulo] = useState('')
+  const [busquedaCompletada, setBusquedaCompletada] = useState<FiltroCompletada>('todas')
+  const [terminosBusqueda, setTerminosBusqueda] = useState<TerminosBusqueda | null>(null)
+  const [modalVisible, setModalVisible] = useState(false)
+
   useEffect(() => {
     cargarTareas()
   }, [])
 
-  async function cargarTareas() {
+  async function cargarTareas(): Promise<void> {
     const res = await fetch('/api/tareas')
     const data = await res.json()
     setTareas(data)
   }
 
-  async function agregarTarea(e: React.FormEvent) {
+  async function agregarTarea(e: React.FormEvent): Promise<void> {
     e.preventDefault()
     if (!input.trim()) return
 
@@ -40,7 +53,7 @@ export default function ListaTareas() {
     })
   }
 
-  async function toggleCompletada(tarea: Tarea) {
+  async function toggleCompletada(tarea: Tarea): Promise<void> {
     await fetch(`/api/tareas/${tarea._id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -53,12 +66,12 @@ export default function ListaTareas() {
     )
   }
 
-  function iniciarEdicion(tarea: Tarea) {
+  function iniciarEdicion(tarea: Tarea): void {
     setEditandoId(tarea._id)
     setEditandoTexto(tarea.titulo)
   }
 
-  async function guardarEdicion(id: string) {
+  async function guardarEdicion(id: string): Promise<void> {
     if (!editandoTexto.trim()) return
     await fetch(`/api/tareas/${id}`, {
       method: 'PUT',
@@ -71,11 +84,29 @@ export default function ListaTareas() {
     setEditandoId(null)
   }
 
-  async function eliminarTarea(id: string) {
+  async function eliminarTarea(id: string): Promise<void> {
     await fetch(`/api/tareas/${id}`, { method: 'DELETE' })
     setTareas((prev) => prev.filter((t) => t._id !== id))
   }
 
+  function buscar(e: React.FormEvent): void {
+    e.preventDefault()
+    const terminos: TerminosBusqueda = { titulo: busquedaTitulo, completada: busquedaCompletada }
+    setTerminosBusqueda(terminos)
+    if (filtrarTareas(tareas, terminos).length === 0) {
+      setModalVisible(true)
+    }
+  }
+
+  function limpiarBusqueda(): void {
+    setBusquedaTitulo('')
+    setBusquedaCompletada('todas')
+    setTerminosBusqueda(null)
+    setModalVisible(false)
+  }
+
+  const tareasMostradas =
+    terminosBusqueda !== null ? filtrarTareas(tareas, terminosBusqueda) : tareas
   const pendientes = tareas.filter((t) => !t.completada).length
 
   return (
@@ -88,6 +119,7 @@ export default function ListaTareas() {
           {pendientes} tarea{pendientes !== 1 ? 's' : ''} pendiente{pendientes !== 1 ? 's' : ''}
         </p>
 
+        {/* Add task */}
         <form onSubmit={agregarTarea} className="flex gap-2 mb-6">
           <input
             type="text"
@@ -105,8 +137,70 @@ export default function ListaTareas() {
           </button>
         </form>
 
+        {/* Search */}
+        <form
+          onSubmit={buscar}
+          aria-label="Buscar tareas"
+          className="flex flex-col gap-3 mb-6 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800"
+        >
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+            Buscar
+          </p>
+          <div className="flex gap-2">
+            <label htmlFor="busqueda-titulo" className="sr-only">
+              Buscar por título
+            </label>
+            <input
+              id="busqueda-titulo"
+              type="text"
+              value={busquedaTitulo}
+              onChange={(e) => setBusquedaTitulo(e.target.value)}
+              placeholder="Buscar por título..."
+              className="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-900 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-50 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-400"
+            />
+            <label htmlFor="busqueda-estado" className="sr-only">
+              Filtrar por estado
+            </label>
+            <select
+              id="busqueda-estado"
+              value={busquedaCompletada}
+              onChange={(e) => setBusquedaCompletada(e.target.value as FiltroCompletada)}
+              className="rounded-lg border border-zinc-200 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-900 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-400"
+            >
+              <option value="todas">Todas</option>
+              <option value="pendientes">Pendientes</option>
+              <option value="completadas">Completadas</option>
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              className="flex-1 rounded-lg bg-zinc-900 dark:bg-zinc-50 px-4 py-2 text-sm font-medium text-white dark:text-zinc-900 transition-colors hover:bg-zinc-700 dark:hover:bg-zinc-200"
+            >
+              Buscar
+            </button>
+            {terminosBusqueda !== null && (
+              <button
+                type="button"
+                onClick={limpiarBusqueda}
+                className="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-200 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-700"
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
+        </form>
+
+        {terminosBusqueda !== null && (
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+            {tareasMostradas.length} resultado
+            {tareasMostradas.length !== 1 ? 's' : ''} encontrado
+            {tareasMostradas.length !== 1 ? 's' : ''}
+          </p>
+        )}
+
         <ul className="space-y-2">
-          {tareas.map((tarea) => (
+          {tareasMostradas.map((tarea) => (
             <li
               key={tarea._id}
               className="flex items-center gap-3 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-3"
@@ -166,13 +260,53 @@ export default function ListaTareas() {
               </button>
             </li>
           ))}
-          {tareas.length === 0 && (
+          {tareasMostradas.length === 0 && terminosBusqueda === null && (
             <li className="text-center py-10 text-zinc-400 dark:text-zinc-500 text-sm">
               No hay tareas. ¡Agrega una!
             </li>
           )}
         </ul>
       </div>
+
+      {/* No-results modal */}
+      {modalVisible && terminosBusqueda !== null && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-sin-resultados-titulo"
+          className="fixed inset-0 flex items-center justify-center bg-black/50 z-50"
+        >
+          <div className="bg-white dark:bg-zinc-800 rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl">
+            <h2
+              id="modal-sin-resultados-titulo"
+              className="text-base font-semibold text-zinc-900 dark:text-zinc-50 mb-3"
+            >
+              Sin resultados
+            </h2>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
+              No se han encotrado registros con los datos proporcionados
+            </p>
+            <div className="rounded-lg bg-zinc-50 dark:bg-zinc-900 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-300 space-y-1 mb-4">
+              {terminosBusqueda.titulo && (
+                <p>
+                  <span className="font-medium">Título:</span>{' '}
+                  &ldquo;{terminosBusqueda.titulo}&rdquo;
+                </p>
+              )}
+              <p>
+                <span className="font-medium">Estado:</span>{' '}
+                {ETIQUETA_ESTADO[terminosBusqueda.completada]}
+              </p>
+            </div>
+            <button
+              onClick={() => setModalVisible(false)}
+              className="w-full rounded-lg bg-zinc-900 dark:bg-zinc-50 py-2 text-sm font-medium text-white dark:text-zinc-900 transition-colors hover:bg-zinc-700 dark:hover:bg-zinc-200"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
