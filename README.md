@@ -141,3 +141,52 @@ npm start
 ```json
 { "error": "Tarea no encontrada" }
 ```
+
+---
+
+## Updates — 2026-06-24
+
+### New Feature: Search Functionality
+
+- **Search panel** added to the main UI — users can filter the task list by `titulo` (partial, case-insensitive text match) and/or `completada` status (`Todas` / `Pendientes` / `Completadas`).
+- **"Buscar" button** applies the filter; a **"Limpiar" button** resets it and restores the full list.
+- **Result counter** appears below the search panel once a search is active (e.g. *"1 resultado encontrado"*).
+- **No-results modal** (`role="dialog"`) is shown when the filter yields 0 results. It includes the exact search terms used so the user knows what was looked for.
+
+### New File: `lib/filtrarTareas.ts`
+
+Pure utility that encapsulates all filtering logic. Exported as a generic function `filtrarTareas<T extends TareaBase>()` so it can be unit-tested independently of the component.
+
+### Test Infrastructure Added
+
+| Tool | Config file | Test files |
+|------|-------------|-----------|
+| Jest + React Testing Library | `jest.config.ts`, `jest.setup.ts` | `__tests__/filtrarTareas.test.ts`, `__tests__/ListaTareas.test.tsx` |
+| Playwright (Chromium) | `playwright.config.ts` | `e2e/search.spec.ts` |
+
+**Test counts:** 12 unit tests · 9 component tests · 9 E2E tests — **30 total, all passing.**
+
+### New npm Scripts
+
+| Script | Command |
+|--------|---------|
+| `npm test` | Run Jest unit + component tests |
+| `npm run test:watch` | Jest in watch mode |
+| `npm run test:e2e` | Run Playwright E2E tests |
+
+### Updated Project Structure
+
+```
+lista-tareas/
+├── __tests__/
+│   ├── filtrarTareas.test.ts        — Unit tests for the filter utility
+│   └── ListaTareas.test.tsx         — Component tests (search, modal, clear)
+├── e2e/
+│   └── search.spec.ts               — Playwright E2E tests with mocked API
+├── lib/
+│   ├── filtrarTareas.ts             — NEW: pure search/filter utility
+│   └── mongodb.ts                   — Singleton MongoDB connection helper
+├── jest.config.ts                   — Jest configuration (next/jest transformer)
+├── jest.setup.ts                    — @testing-library/jest-dom setup
+└── playwright.config.ts             — Playwright config (Chromium, webServer)
+```
