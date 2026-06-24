@@ -203,3 +203,53 @@ test.describe('Paginación', () => {
     await expect(page.getByRole('navigation', { name: 'Paginación de tareas' })).not.toBeVisible()
   })
 })
+
+// ─── PDF report button ────────────────────────────────────────────────────────
+
+test.describe('Botón Reporte', () => {
+  test('muestra el botón Reporte en la página', async ({ page }) => {
+    await mockTareas(page, tareasBase)
+    await page.goto('/')
+    await page.waitForSelector('text=Comprar leche')
+    await expect(page.getByRole('button', { name: 'Reporte' })).toBeVisible()
+  })
+
+  test('el botón Reporte está deshabilitado con la lista vacía', async ({ page }) => {
+    await mockTareas(page, [])
+    await page.goto('/')
+    await page.waitForSelector('text=No hay tareas')
+    await expect(page.getByRole('button', { name: 'Reporte' })).toBeDisabled()
+  })
+
+  test('el botón Reporte está habilitado cuando hay tareas', async ({ page }) => {
+    await mockTareas(page, tareasBase)
+    await page.goto('/')
+    await page.waitForSelector('text=Comprar leche')
+    await expect(page.getByRole('button', { name: 'Reporte' })).toBeEnabled()
+  })
+
+  test('el botón Reporte está deshabilitado si la búsqueda no tiene resultados', async ({ page }) => {
+    await mockTareas(page, tareasBase)
+    await page.goto('/')
+    await page.waitForSelector('text=Comprar leche')
+
+    await page.getByLabel('Buscar por título').fill('xyz_no_existe_en_ninguna_tarea')
+    await page.getByRole('button', { name: 'Buscar' }).click()
+    await page.getByRole('button', { name: 'Cerrar' }).click()
+
+    await expect(page.getByRole('button', { name: 'Reporte' })).toBeDisabled()
+  })
+
+  test('genera y descarga el PDF al hacer clic en Reporte', async ({ page }) => {
+    await mockTareas(page, tareasBase)
+    await page.goto('/')
+    await page.waitForSelector('text=Comprar leche')
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Reporte' }).click(),
+    ])
+
+    expect(download.suggestedFilename()).toBe('reporte-tareas.pdf')
+  })
+})

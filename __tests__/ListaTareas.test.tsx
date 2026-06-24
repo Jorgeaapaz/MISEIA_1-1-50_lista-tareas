@@ -3,6 +3,28 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ListaTareas from '@/app/components/ListaTareas'
 
+// ─── mock jsPDF so it does not require Canvas in jsdom ────────────────────────
+
+const mockSave = jest.fn()
+const mockText = jest.fn()
+const mockSetFontSize = jest.fn()
+const mockDocInstance = {
+  setFontSize: mockSetFontSize,
+  text: mockText,
+  save: mockSave,
+  lastAutoTable: { finalY: 50 },
+}
+
+jest.mock('jspdf', () => ({
+  __esModule: true,
+  default: jest.fn(() => mockDocInstance),
+}))
+
+jest.mock('jspdf-autotable', () => ({
+  __esModule: true,
+  default: jest.fn(),
+}))
+
 // ─── fixtures ────────────────────────────────────────────────────────────────
 
 const tareasFixture = [
@@ -11,7 +33,6 @@ const tareasFixture = [
   { _id: '3', titulo: 'Hacer ejercicio', completada: false },
 ]
 
-/** 7 tasks → 2 pages of 5 */
 const tareasPaginaFixture = Array.from({ length: 7 }, (_, i) => ({
   _id: String(i + 1),
   titulo: `Tarea número ${i + 1}`,
@@ -35,15 +56,17 @@ function setupFetch(fixture: unknown[]) {
   }) as jest.Mock
 }
 
-afterEach(() => jest.clearAllMocks())
-
-// ─── search tests (3-task fixture) ───────────────────────────────────────────
+afterEach(() => {
+  jest.clearAllMocks()
+})
 
 async function renderAndWait(fixture = tareasFixture) {
   setupFetch(fixture)
   render(<ListaTareas />)
   await waitFor(() => expect(screen.getByText(fixture[0]!.titulo)).toBeInTheDocument())
 }
+
+// ─── search tests (3-task fixture) ───────────────────────────────────────────
 
 describe('ListaTareas — búsqueda', () => {
   it('muestra el formulario de búsqueda con sus controles', async () => {
@@ -104,7 +127,6 @@ describe('ListaTareas — búsqueda', () => {
 
   it('incluye el estado en el modal cuando se busca solo por estado sin resultado', async () => {
     const user = userEvent.setup()
-    // 2 pending tasks → search panel visible, but searching "completadas" yields 0 results
     setupFetch([
       { _id: '1', titulo: 'Tarea A', completada: false },
       { _id: '2', titulo: 'Tarea B', completada: false },
@@ -180,7 +202,7 @@ describe('ListaTareas — visibilidad del buscador', () => {
   })
 
   it('muestra la búsqueda cuando hay 2 o más tareas', async () => {
-    await renderAndWait() // 3-task fixture
+    await renderAndWait()
     expect(screen.getByRole('button', { name: 'Buscar' })).toBeInTheDocument()
   })
 })
@@ -189,12 +211,12 @@ describe('ListaTareas — visibilidad del buscador', () => {
 
 describe('ListaTareas — paginación', () => {
   it('no muestra controles de paginación con 5 o menos tareas', async () => {
-    await renderAndWait() // 3 tasks
+    await renderAndWait()
     expect(screen.queryByRole('navigation', { name: 'Paginación de tareas' })).not.toBeInTheDocument()
   })
 
   it('muestra controles de paginación con más de 5 tareas', async () => {
-    await renderAndWait(tareasPaginaFixture) // 7 tasks
+    await renderAndWait(tareasPaginaFixture)
     expect(screen.getByRole('navigation', { name: 'Paginación de tareas' })).toBeInTheDocument()
   })
 
@@ -254,12 +276,63 @@ describe('ListaTareas — paginación', () => {
     await user.click(screen.getByRole('button', { name: 'Siguiente' }))
     expect(screen.getByText('Página 2 de 2')).toBeInTheDocument()
 
-    // Search that matches only first-page items
     await user.type(screen.getByLabelText('Buscar por título'), 'número 1')
     await user.click(screen.getByRole('button', { name: 'Buscar' }))
 
     expect(screen.getByText('Tarea número 1')).toBeInTheDocument()
-    // Pagination should be gone (only 1 result)
     expect(screen.queryByRole('navigation', { name: 'Paginación de tareas' })).not.toBeInTheDocument()
+  })
+})
+
+// ─── PDF report button ────────────────────────────────────────────────────────
+
+describe('ListaTareas — botón Reporte', () => {
+  it('muestra el botón Reporte en la página', async () => {
+    await renderAndWait()
+    expect(screen.getByRole('button', { name: 'Reporte' })).toBeInTheDocument()
+  })
+
+  it('el botón Reporte está deshabilitado cuando la lista está vacía', async () => {
+    setupFetch([])
+    render(<ListaTareas />)
+    await waitFor(() => expect(screen.getByText(/No hay tareas/)).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'Reporte' })).toBeDisabled()
+  })
+
+  it('el botón Reporte está habilitado cuando hay tareas', async () => {
+    await renderAndWait()
+    expect(screen.getByRole('button', { name: 'Reporte' })).toBeEnabled()
+  })
+
+  it('el botón Reporte está deshabilitado cuando la búsqueda no devuelve resultados', async () => {
+    const user = userEvent.setup()
+    await renderAndWait()
+
+    await user.type(screen.getByLabelText('Buscar por título'), 'xyz_no_existe')
+    await user.click(screen.getByRole('button', { name: 'Buscar' }))
+
+    // Close the modal first
+    await user.click(screen.getByRole('button', { name: 'Cerrar' }))
+
+    expect(screen.getByRole('button', { name: 'Reporte' })).toBeDisabled()
+  })
+
+  it('el botón Reporte permanece habilitado con resultados de búsqueda', async () => {
+    const user = userEvent.setup()
+    await renderAndWait()
+
+    await user.type(screen.getByLabelText('Buscar por título'), 'leche')
+    await user.click(screen.getByRole('button', { name: 'Buscar' }))
+
+    expect(screen.getByRole('button', { name: 'Reporte' })).toBeEnabled()
+  })
+
+  it('llama a doc.save con el nombre de archivo correcto al hacer clic', async () => {
+    const user = userEvent.setup()
+    await renderAndWait()
+
+    await user.click(screen.getByRole('button', { name: 'Reporte' }))
+
+    await waitFor(() => expect(mockSave).toHaveBeenCalledWith('reporte-tareas.pdf'))
   })
 })
