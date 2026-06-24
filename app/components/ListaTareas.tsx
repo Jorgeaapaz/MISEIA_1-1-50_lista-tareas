@@ -38,7 +38,6 @@ export default function ListaTareas() {
     cargarTareas()
   }, [])
 
-  // Keep paginaActual in bounds when the visible list shrinks (delete / search)
   const tareasMostradas =
     terminosBusqueda !== null ? filtrarTareas(tareas, terminosBusqueda) : tareas
 
@@ -131,15 +130,91 @@ export default function ListaTareas() {
     setPaginaActual(1)
   }
 
+  async function generarReporte(): Promise<void> {
+    const [{ default: JsPDF }, { default: autoTable }] = await Promise.all([
+      import('jspdf'),
+      import('jspdf-autotable'),
+    ])
+    const doc = new JsPDF()
+    const fecha = new Date().toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    })
+
+    doc.setFontSize(16)
+    doc.text('Reporte de Tareas', 14, 20)
+
+    doc.setFontSize(10)
+    doc.text(`Fecha de generación: ${fecha}`, 14, 29)
+
+    let startY = 38
+
+    if (terminosBusqueda !== null) {
+      const filtros: string[] = []
+      if (terminosBusqueda.titulo) {
+        filtros.push(`Título: "${terminosBusqueda.titulo}"`)
+      }
+      if (terminosBusqueda.completada !== 'todas') {
+        filtros.push(`Estado: ${ETIQUETA_ESTADO[terminosBusqueda.completada]}`)
+      }
+      if (filtros.length > 0) {
+        doc.text(`Filtros: ${filtros.join('  |  ')}`, 14, startY)
+        startY += 8
+      }
+    }
+
+    autoTable(doc, {
+      startY,
+      head: [['#', 'Título', 'Estado']],
+      body: tareasMostradas.map((t, i) => [
+        String(i + 1),
+        t.titulo,
+        t.completada ? 'Completada' : 'Pendiente',
+      ]),
+      columnStyles: {
+        0: { cellWidth: 12 },
+        2: { cellWidth: 30 },
+      },
+      headStyles: { fillColor: [24, 24, 27] },
+      styles: { fontSize: 10 },
+    })
+
+    const completadas = tareasMostradas.filter((t) => t.completada).length
+    const pendientesReporte = tareasMostradas.length - completadas
+    const tableDoc = doc as unknown as { lastAutoTable: { finalY: number } }
+    const finalY = tableDoc.lastAutoTable.finalY + 6
+
+    doc.setFontSize(9)
+    doc.text(
+      `Total: ${tareasMostradas.length}  |  Completadas: ${completadas}  |  Pendientes: ${pendientesReporte}`,
+      14,
+      finalY,
+    )
+
+    doc.save('reporte-tareas.pdf')
+  }
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900 flex items-start justify-center pt-16 px-4">
       <div className="w-full max-w-lg">
         <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-50 mb-2">
           Lista de Tareas
         </h1>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-8">
-          {pendientes} tarea{pendientes !== 1 ? 's' : ''} pendiente{pendientes !== 1 ? 's' : ''}
-        </p>
+
+        <div className="flex items-center justify-between mb-8">
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            {pendientes} tarea{pendientes !== 1 ? 's' : ''} pendiente{pendientes !== 1 ? 's' : ''}
+          </p>
+          <button
+            type="button"
+            onClick={() => { void generarReporte() }}
+            disabled={tareasMostradas.length === 0}
+            className="rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-200 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Reporte
+          </button>
+        </div>
 
         {/* Add task */}
         <form onSubmit={agregarTarea} className="flex gap-2 mb-6">
