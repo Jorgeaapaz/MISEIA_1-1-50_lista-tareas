@@ -1,35 +1,61 @@
-import { NextRequest } from 'next/server'
-import getDb from '@/lib/mongodb'
+import { NextRequest, NextResponse } from 'next/server'
+import { connectToDatabase, resetConnection } from '@/lib/mongodb'
+
+const MOCK_TAREAS = [
+  { _id: 'mock-1', titulo: 'Revisar correos (sin conexión)', completada: false },
+  { _id: 'mock-2', titulo: 'Preparar informe semanal (sin conexión)', completada: true },
+  { _id: 'mock-3', titulo: 'Actualizar documentación (sin conexión)', completada: false },
+]
 
 export async function GET() {
-  const db = await getDb()
-  const tareas = await db
-    .collection('tareas')
-    .find({})
-    .sort({ creadoEn: -1 })
-    .toArray()
+  try {
+    const { db } = await connectToDatabase()
+    const tareas = await db
+      .collection('tareas')
+      .find({})
+      .sort({ creadoEn: -1 })
+      .toArray()
 
-  const serialized = tareas.map((t) => ({
-    ...t,
-    _id: t._id.toString(),
-  }))
+    const serialized = tareas.map((t) => ({
+      ...t,
+      _id: t._id.toString(),
+    }))
 
-  return Response.json(serialized)
+    return NextResponse.json(serialized, {
+      headers: { 'X-DB-Status': 'connected' },
+    })
+  } catch {
+    resetConnection()
+    return NextResponse.json(MOCK_TAREAS, {
+      headers: { 'X-DB-Status': 'disconnected' },
+    })
+  }
 }
 
 export async function POST(request: NextRequest) {
   const { titulo } = await request.json()
 
   if (!titulo?.trim()) {
-    return Response.json({ error: 'El título es requerido' }, { status: 400 })
+    return NextResponse.json({ error: 'El título es requerido' }, { status: 400 })
   }
 
-  const db = await getDb()
-  const result = await db.collection('tareas').insertOne({
-    titulo: titulo.trim(),
-    completada: false,
-    creadoEn: new Date(),
-  })
+  try {
+    const { db } = await connectToDatabase()
+    const result = await db.collection('tareas').insertOne({
+      titulo: titulo.trim(),
+      completada: false,
+      creadoEn: new Date(),
+    })
 
-  return Response.json({ _id: result.insertedId.toString(), titulo: titulo.trim(), completada: false }, { status: 201 })
+    return NextResponse.json(
+      { _id: result.insertedId.toString(), titulo: titulo.trim(), completada: false },
+      { status: 201 },
+    )
+  } catch {
+    resetConnection()
+    return NextResponse.json(
+      { error: 'Base de datos no disponible' },
+      { status: 503 },
+    )
+  }
 }

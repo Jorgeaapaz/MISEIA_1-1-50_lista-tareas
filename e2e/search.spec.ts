@@ -14,14 +14,27 @@ const tareasPagina = Array.from({ length: 7 }, (_, i) => ({
   completada: i % 2 === 0,
 }))
 
-// ─── helper ──────────────────────────────────────────────────────────────────
+const mockTareasOffline = [
+  { _id: 'mock-1', titulo: 'Revisar correos (sin conexión)', completada: false },
+  { _id: 'mock-2', titulo: 'Preparar informe semanal (sin conexión)', completada: true },
+  { _id: 'mock-3', titulo: 'Actualizar documentación (sin conexión)', completada: false },
+]
 
-async function mockTareas(page: import('@playwright/test').Page, data: unknown[]) {
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
+type Page = import('@playwright/test').Page
+
+async function mockTareas(
+  page: Page,
+  data: unknown[],
+  dbStatus: 'connected' | 'disconnected' = 'connected',
+) {
   await page.route('/api/tareas', async (route) => {
     if (route.request().method() === 'GET') {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
+        headers: { 'X-DB-Status': dbStatus },
         body: JSON.stringify(data),
       })
     } else {
@@ -251,5 +264,66 @@ test.describe('Botón Reporte', () => {
     ])
 
     expect(download.suggestedFilename()).toBe('reporte-tareas.pdf')
+  })
+})
+
+// ─── DB connection status ─────────────────────────────────────────────────────
+
+test.describe('Estado de conexión a BD', () => {
+  test('muestra icono verde y sin banda cuando la BD está conectada', async ({ page }) => {
+    await mockTareas(page, tareasBase, 'connected')
+    await page.goto('/')
+    await page.waitForSelector('text=Comprar leche')
+
+    await expect(page.getByTitle('Conectado a la base de datos')).toBeVisible()
+    await expect(page.getByRole('status')).not.toBeVisible()
+  })
+
+  test('muestra icono rojo y banda naranja cuando la BD está desconectada', async ({ page }) => {
+    await mockTareas(page, mockTareasOffline, 'disconnected')
+    await page.goto('/')
+    await page.waitForSelector('text=Revisar correos (sin conexión)')
+
+    await expect(page.getByTitle('Sin conexión a la base de datos')).toBeVisible()
+    const banner = page.getByRole('status')
+    await expect(banner).toBeVisible()
+    await expect(banner).toContainText(
+      'You are not connected to the Database, Click on Reconnect',
+    )
+  })
+
+  test('la banda naranja incluye el botón Reconnect', async ({ page }) => {
+    await mockTareas(page, mockTareasOffline, 'disconnected')
+    await page.goto('/')
+    await page.waitForSelector('text=Revisar correos (sin conexión)')
+
+    await expect(page.getByRole('button', { name: 'Reconnect' })).toBeVisible()
+  })
+
+  test('muestra los 3 registros de muestra cuando está desconectada', async ({ page }) => {
+    await mockTareas(page, mockTareasOffline, 'disconnected')
+    await page.goto('/')
+
+    await expect(page.getByText('Revisar correos (sin conexión)')).toBeVisible()
+    await expect(page.getByText('Preparar informe semanal (sin conexión)')).toBeVisible()
+    await expect(page.getByText('Actualizar documentación (sin conexión)')).toBeVisible()
+  })
+
+  test('al hacer clic en Reconnect y restaurar conexión, desaparece la banda', async ({ page }) => {
+    // First load: disconnected
+    await mockTareas(page, mockTareasOffline, 'disconnected')
+    await page.goto('/')
+    await page.waitForSelector('text=Revisar correos (sin conexión)')
+    await expect(page.getByRole('status')).toBeVisible()
+
+    // Override: next GET returns connected
+    await page.unroute('/api/tareas')
+    await mockTareas(page, tareasBase, 'connected')
+
+    await page.getByRole('button', { name: 'Reconnect' }).click()
+
+    await page.waitForSelector('text=Comprar leche')
+    await expect(page.getByRole('status')).not.toBeVisible()
+    await expect(page.getByTitle('Conectado a la base de datos')).toBeVisible()
   })
 })
