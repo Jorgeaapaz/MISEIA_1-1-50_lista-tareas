@@ -16,6 +16,8 @@ const ETIQUETA_ESTADO: Record<FiltroCompletada, string> = {
   pendientes: 'Pendientes',
 }
 
+const ITEMS_POR_PAGINA = 5
+
 export default function ListaTareas() {
   const [tareas, setTareas] = useState<Tarea[]>([])
   const [input, setInput] = useState('')
@@ -23,14 +25,36 @@ export default function ListaTareas() {
   const [editandoTexto, setEditandoTexto] = useState('')
   const [isPending, startTransition] = useTransition()
 
+  // Search state
   const [busquedaTitulo, setBusquedaTitulo] = useState('')
   const [busquedaCompletada, setBusquedaCompletada] = useState<FiltroCompletada>('todas')
   const [terminosBusqueda, setTerminosBusqueda] = useState<TerminosBusqueda | null>(null)
   const [modalVisible, setModalVisible] = useState(false)
 
+  // Paging state
+  const [paginaActual, setPaginaActual] = useState(1)
+
   useEffect(() => {
     cargarTareas()
   }, [])
+
+  // Keep paginaActual in bounds when the visible list shrinks (delete / search)
+  const tareasMostradas =
+    terminosBusqueda !== null ? filtrarTareas(tareas, terminosBusqueda) : tareas
+
+  const totalPaginas = Math.max(1, Math.ceil(tareasMostradas.length / ITEMS_POR_PAGINA))
+
+  useEffect(() => {
+    setPaginaActual((p) => Math.min(p, totalPaginas))
+  }, [totalPaginas])
+
+  const tareasPaginadas = tareasMostradas.slice(
+    (paginaActual - 1) * ITEMS_POR_PAGINA,
+    paginaActual * ITEMS_POR_PAGINA,
+  )
+
+  const pendientes = tareas.filter((t) => !t.completada).length
+  const mostrarBusqueda = tareas.length > 1
 
   async function cargarTareas(): Promise<void> {
     const res = await fetch('/api/tareas')
@@ -61,8 +85,8 @@ export default function ListaTareas() {
     })
     setTareas((prev) =>
       prev.map((t) =>
-        t._id === tarea._id ? { ...t, completada: !t.completada } : t
-      )
+        t._id === tarea._id ? { ...t, completada: !t.completada } : t,
+      ),
     )
   }
 
@@ -79,7 +103,7 @@ export default function ListaTareas() {
       body: JSON.stringify({ titulo: editandoTexto }),
     })
     setTareas((prev) =>
-      prev.map((t) => (t._id === id ? { ...t, titulo: editandoTexto.trim() } : t))
+      prev.map((t) => (t._id === id ? { ...t, titulo: editandoTexto.trim() } : t)),
     )
     setEditandoId(null)
   }
@@ -93,6 +117,7 @@ export default function ListaTareas() {
     e.preventDefault()
     const terminos: TerminosBusqueda = { titulo: busquedaTitulo, completada: busquedaCompletada }
     setTerminosBusqueda(terminos)
+    setPaginaActual(1)
     if (filtrarTareas(tareas, terminos).length === 0) {
       setModalVisible(true)
     }
@@ -103,11 +128,8 @@ export default function ListaTareas() {
     setBusquedaCompletada('todas')
     setTerminosBusqueda(null)
     setModalVisible(false)
+    setPaginaActual(1)
   }
-
-  const tareasMostradas =
-    terminosBusqueda !== null ? filtrarTareas(tareas, terminosBusqueda) : tareas
-  const pendientes = tareas.filter((t) => !t.completada).length
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900 flex items-start justify-center pt-16 px-4">
@@ -137,59 +159,61 @@ export default function ListaTareas() {
           </button>
         </form>
 
-        {/* Search */}
-        <form
-          onSubmit={buscar}
-          aria-label="Buscar tareas"
-          className="flex flex-col gap-3 mb-6 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800"
-        >
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-            Buscar
-          </p>
-          <div className="flex gap-2">
-            <label htmlFor="busqueda-titulo" className="sr-only">
-              Buscar por título
-            </label>
-            <input
-              id="busqueda-titulo"
-              type="text"
-              value={busquedaTitulo}
-              onChange={(e) => setBusquedaTitulo(e.target.value)}
-              placeholder="Buscar por título..."
-              className="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-900 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-50 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-400"
-            />
-            <label htmlFor="busqueda-estado" className="sr-only">
-              Filtrar por estado
-            </label>
-            <select
-              id="busqueda-estado"
-              value={busquedaCompletada}
-              onChange={(e) => setBusquedaCompletada(e.target.value as FiltroCompletada)}
-              className="rounded-lg border border-zinc-200 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-900 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-400"
-            >
-              <option value="todas">Todas</option>
-              <option value="pendientes">Pendientes</option>
-              <option value="completadas">Completadas</option>
-            </select>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              className="flex-1 rounded-lg bg-zinc-900 dark:bg-zinc-50 px-4 py-2 text-sm font-medium text-white dark:text-zinc-900 transition-colors hover:bg-zinc-700 dark:hover:bg-zinc-200"
-            >
+        {/* Search — hidden when list has 0 or 1 task */}
+        {mostrarBusqueda && (
+          <form
+            onSubmit={buscar}
+            aria-label="Buscar tareas"
+            className="flex flex-col gap-3 mb-6 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800"
+          >
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
               Buscar
-            </button>
-            {terminosBusqueda !== null && (
-              <button
-                type="button"
-                onClick={limpiarBusqueda}
-                className="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-200 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-700"
+            </p>
+            <div className="flex gap-2">
+              <label htmlFor="busqueda-titulo" className="sr-only">
+                Buscar por título
+              </label>
+              <input
+                id="busqueda-titulo"
+                type="text"
+                value={busquedaTitulo}
+                onChange={(e) => setBusquedaTitulo(e.target.value)}
+                placeholder="Buscar por título..."
+                className="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-900 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-50 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-400"
+              />
+              <label htmlFor="busqueda-estado" className="sr-only">
+                Filtrar por estado
+              </label>
+              <select
+                id="busqueda-estado"
+                value={busquedaCompletada}
+                onChange={(e) => setBusquedaCompletada(e.target.value as FiltroCompletada)}
+                className="rounded-lg border border-zinc-200 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-900 px-3 py-2 text-sm text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:focus:ring-zinc-400"
               >
-                Limpiar
+                <option value="todas">Todas</option>
+                <option value="pendientes">Pendientes</option>
+                <option value="completadas">Completadas</option>
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                className="flex-1 rounded-lg bg-zinc-900 dark:bg-zinc-50 px-4 py-2 text-sm font-medium text-white dark:text-zinc-900 transition-colors hover:bg-zinc-700 dark:hover:bg-zinc-200"
+              >
+                Buscar
               </button>
-            )}
-          </div>
-        </form>
+              {terminosBusqueda !== null && (
+                <button
+                  type="button"
+                  onClick={limpiarBusqueda}
+                  className="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-200 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                >
+                  Limpiar
+                </button>
+              )}
+            </div>
+          </form>
+        )}
 
         {terminosBusqueda !== null && (
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
@@ -200,7 +224,7 @@ export default function ListaTareas() {
         )}
 
         <ul className="space-y-2">
-          {tareasMostradas.map((tarea) => (
+          {tareasPaginadas.map((tarea) => (
             <li
               key={tarea._id}
               className="flex items-center gap-3 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-3"
@@ -266,6 +290,32 @@ export default function ListaTareas() {
             </li>
           )}
         </ul>
+
+        {/* Pagination */}
+        {totalPaginas > 1 && (
+          <nav
+            aria-label="Paginación de tareas"
+            className="flex items-center justify-between mt-4 pt-4 border-t border-zinc-200 dark:border-zinc-700"
+          >
+            <button
+              onClick={() => setPaginaActual((p) => Math.max(1, p - 1))}
+              disabled={paginaActual === 1}
+              className="rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-200 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Anterior
+            </button>
+            <span className="text-sm text-zinc-500 dark:text-zinc-400">
+              Página {paginaActual} de {totalPaginas}
+            </span>
+            <button
+              onClick={() => setPaginaActual((p) => Math.min(totalPaginas, p + 1))}
+              disabled={paginaActual === totalPaginas}
+              className="rounded-lg border border-zinc-200 dark:border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-200 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Siguiente
+            </button>
+          </nav>
+        )}
       </div>
 
       {/* No-results modal */}
