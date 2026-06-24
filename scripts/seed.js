@@ -1,5 +1,5 @@
-// Populates the tareas collection with 27 sample tasks (mixed completion statuses).
-// Skips seeding if the collection already has 25+ documents.
+// Populates the tareas collection with 30 sample tasks (mixed completion statuses).
+// Skips seeding if the collection already has 30+ documents.
 // Usage: node scripts/seed.js
 const { MongoClient } = require('mongodb')
 const fs = require('fs')
@@ -21,7 +21,7 @@ if (fs.existsSync(envPath)) {
 }
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017'
-const MONGODB_DB  = process.env.MONGODB_DB  || 'lista-tareas'
+const MONGODB_DB  = process.env.MONGODB_DB  || 'lista_tareas'
 
 const TAREAS = [
   { titulo: 'Comprar leche y pan',                     completada: false },
@@ -51,6 +51,9 @@ const TAREAS = [
   { titulo: 'Completar el proyecto de prueba',         completada: false },
   { titulo: 'Enviar informe semanal',                  completada: true  },
   { titulo: 'Comprar plantas para el balcón',          completada: false },
+  { titulo: 'Planificar vacaciones de verano',         completada: false },
+  { titulo: 'Renovar el pasaporte',                   completada: true  },
+  { titulo: 'Inscribirse al curso en línea',           completada: false },
 ]
 
 async function seed() {
@@ -61,8 +64,8 @@ async function seed() {
     const col = db.collection('tareas')
 
     const existing = await col.countDocuments()
-    if (existing >= 25) {
-      console.log(`✓ Ya hay ${existing} tareas — no se siembra de nuevo. Usa --force para forzar.`)
+    if (existing >= 30) {
+      console.log(`✓ Ya hay ${existing} tareas — no se siembra de nuevo.`)
       return
     }
 

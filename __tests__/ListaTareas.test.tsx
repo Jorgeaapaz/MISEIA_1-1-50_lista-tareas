@@ -39,19 +39,34 @@ const tareasPaginaFixture = Array.from({ length: 7 }, (_, i) => ({
   completada: i % 2 === 0,
 }))
 
+const mockTareasOffline = [
+  { _id: 'mock-1', titulo: 'Revisar correos (sin conexión)', completada: false },
+  { _id: 'mock-2', titulo: 'Preparar informe semanal (sin conexión)', completada: true },
+  { _id: 'mock-3', titulo: 'Actualizar documentación (sin conexión)', completada: false },
+]
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-function mockFetch(data: unknown) {
+function mockFetch(
+  data: unknown,
+  options: { dbStatus?: 'connected' | 'disconnected'; ok?: boolean; status?: number } = {},
+) {
+  const { dbStatus = 'connected', ok = true, status = 200 } = options
+  const headersMap: Record<string, string> = { 'x-db-status': dbStatus }
   return Promise.resolve({
-    ok: true,
-    status: 200,
+    ok,
+    status,
     json: () => Promise.resolve(data),
+    headers: { get: (key: string) => headersMap[key.toLowerCase()] ?? null },
   } as unknown as globalThis.Response)
 }
 
-function setupFetch(fixture: unknown[]) {
+function setupFetch(
+  fixture: unknown[],
+  dbStatus: 'connected' | 'disconnected' = 'connected',
+) {
   global.fetch = jest.fn((url: RequestInfo | URL) => {
-    if (url === '/api/tareas') return mockFetch(fixture)
+    if (url === '/api/tareas') return mockFetch(fixture, { dbStatus })
     return mockFetch({ ok: true })
   }) as jest.Mock
 }
@@ -60,13 +75,16 @@ afterEach(() => {
   jest.clearAllMocks()
 })
 
-async function renderAndWait(fixture = tareasFixture) {
-  setupFetch(fixture)
+async function renderAndWait(
+  fixture = tareasFixture,
+  dbStatus: 'connected' | 'disconnected' = 'connected',
+) {
+  setupFetch(fixture, dbStatus)
   render(<ListaTareas />)
   await waitFor(() => expect(screen.getByText(fixture[0]!.titulo)).toBeInTheDocument())
 }
 
-// ─── search tests (3-task fixture) ───────────────────────────────────────────
+// ─── search tests ─────────────────────────────────────────────────────────────
 
 describe('ListaTareas — búsqueda', () => {
   it('muestra el formulario de búsqueda con sus controles', async () => {
@@ -310,8 +328,6 @@ describe('ListaTareas — botón Reporte', () => {
 
     await user.type(screen.getByLabelText('Buscar por título'), 'xyz_no_existe')
     await user.click(screen.getByRole('button', { name: 'Buscar' }))
-
-    // Close the modal first
     await user.click(screen.getByRole('button', { name: 'Cerrar' }))
 
     expect(screen.getByRole('button', { name: 'Reporte' })).toBeDisabled()
@@ -334,5 +350,77 @@ describe('ListaTareas — botón Reporte', () => {
     await user.click(screen.getByRole('button', { name: 'Reporte' }))
 
     await waitFor(() => expect(mockSave).toHaveBeenCalledWith('reporte-tareas.pdf'))
+  })
+})
+
+// ─── DB connection status ─────────────────────────────────────────────────────
+
+describe('ListaTareas — estado de conexión a BD', () => {
+  it('muestra el icono verde cuando la BD está conectada', async () => {
+    await renderAndWait(tareasFixture, 'connected')
+    const icon = screen.getByLabelText('Base de datos conectada')
+    expect(icon).toBeInTheDocument()
+    expect(icon).toHaveClass('bg-green-500')
+  })
+
+  it('muestra el icono rojo cuando la BD está desconectada', async () => {
+    await renderAndWait(mockTareasOffline, 'disconnected')
+    const icon = screen.getByLabelText('Base de datos desconectada')
+    expect(icon).toBeInTheDocument()
+    expect(icon).toHaveClass('bg-red-500')
+  })
+
+  it('no muestra la banda naranja cuando la BD está conectada', async () => {
+    await renderAndWait(tareasFixture, 'connected')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('muestra la banda naranja cuando la BD está desconectada', async () => {
+    await renderAndWait(mockTareasOffline, 'disconnected')
+    const banner = screen.getByRole('status')
+    expect(banner).toBeInTheDocument()
+    expect(banner).toHaveTextContent(
+      'You are not connected to the Database, Click on Reconnect',
+    )
+  })
+
+  it('muestra el botón Reconnect en la banda naranja', async () => {
+    await renderAndWait(mockTareasOffline, 'disconnected')
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeInTheDocument()
+  })
+
+  it('muestra los 3 registros de muestra cuando está desconectada', async () => {
+    await renderAndWait(mockTareasOffline, 'disconnected')
+    expect(screen.getByText('Revisar correos (sin conexión)')).toBeInTheDocument()
+    expect(screen.getByText('Preparar informe semanal (sin conexión)')).toBeInTheDocument()
+    expect(screen.getByText('Actualizar documentación (sin conexión)')).toBeInTheDocument()
+  })
+
+  it('llama a cargarTareas al hacer clic en Reconnect', async () => {
+    const user = userEvent.setup()
+    // First call: disconnected (mock data)
+    // Second call (reconnect): connected (real data)
+    let callCount = 0
+    global.fetch = jest.fn((url: RequestInfo | URL) => {
+      if (url === '/api/tareas') {
+        callCount++
+        if (callCount === 1) {
+          return mockFetch(mockTareasOffline, { dbStatus: 'disconnected' })
+        }
+        return mockFetch(tareasFixture, { dbStatus: 'connected' })
+      }
+      return mockFetch({ ok: true })
+    }) as jest.Mock
+
+    render(<ListaTareas />)
+    await waitFor(() =>
+      expect(screen.getByText('Revisar correos (sin conexión)')).toBeInTheDocument(),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Reconnect' }))
+
+    await waitFor(() => expect(screen.getByText('Comprar leche')).toBeInTheDocument())
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Base de datos conectada')).toBeInTheDocument()
   })
 })

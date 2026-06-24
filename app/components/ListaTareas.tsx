@@ -24,6 +24,7 @@ export default function ListaTareas() {
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [editandoTexto, setEditandoTexto] = useState('')
   const [isPending, startTransition] = useTransition()
+  const [dbConectada, setDbConectada] = useState(true)
 
   // Search state
   const [busquedaTitulo, setBusquedaTitulo] = useState('')
@@ -58,7 +59,11 @@ export default function ListaTareas() {
   async function cargarTareas(): Promise<void> {
     const res = await fetch('/api/tareas')
     const data = await res.json()
-    setTareas(data)
+    const connected = res.headers.get('x-db-status') === 'connected'
+    setDbConectada(connected)
+    if (Array.isArray(data)) {
+      setTareas(data)
+    }
   }
 
   async function agregarTarea(e: React.FormEvent): Promise<void> {
@@ -391,6 +396,9 @@ export default function ListaTareas() {
             </button>
           </nav>
         )}
+
+        {/* Spacer so content is not hidden behind the offline band */}
+        {!dbConectada && <div className="h-14" />}
       </div>
 
       {/* No-results modal */}
@@ -430,6 +438,37 @@ export default function ListaTareas() {
               Cerrar
             </button>
           </div>
+        </div>
+      )}
+
+      {/* DB connection status icon — always visible, bottom-right */}
+      <div
+        className={`fixed right-4 z-50 ${!dbConectada ? 'bottom-16' : 'bottom-4'}`}
+      >
+        <div
+          aria-label={dbConectada ? 'Base de datos conectada' : 'Base de datos desconectada'}
+          title={dbConectada ? 'Conectado a la base de datos' : 'Sin conexión a la base de datos'}
+          className={`w-3 h-3 rounded-full shadow ${dbConectada ? 'bg-green-500' : 'bg-red-500'}`}
+        />
+      </div>
+
+      {/* Offline banner */}
+      {!dbConectada && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-0 left-0 right-0 z-40 bg-orange-500 text-white px-6 py-3 flex items-center justify-between"
+        >
+          <span className="text-sm font-medium">
+            You are not connected to the Database, Click on Reconnect
+          </span>
+          <button
+            type="button"
+            onClick={() => { void cargarTareas() }}
+            className="ml-4 flex-shrink-0 rounded-lg bg-white text-orange-600 px-4 py-1.5 text-sm font-semibold hover:bg-orange-50 transition-colors"
+          >
+            Reconnect
+          </button>
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { ObjectId } from 'mongodb'
-import getDb from '@/lib/mongodb'
+import { connectToDatabase, resetConnection } from '@/lib/mongodb'
 
 export async function PUT(
   request: NextRequest,
@@ -9,7 +9,7 @@ export async function PUT(
   const { id } = await ctx.params
 
   if (!ObjectId.isValid(id)) {
-    return Response.json({ error: 'ID inválido' }, { status: 400 })
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
   }
 
   const body = await request.json()
@@ -19,19 +19,24 @@ export async function PUT(
   if (body.completada !== undefined) update.completada = body.completada
 
   if (Object.keys(update).length === 0) {
-    return Response.json({ error: 'Sin campos para actualizar' }, { status: 400 })
+    return NextResponse.json({ error: 'Sin campos para actualizar' }, { status: 400 })
   }
 
-  const db = await getDb()
-  const result = await db
-    .collection('tareas')
-    .updateOne({ _id: new ObjectId(id) }, { $set: update })
+  try {
+    const { db } = await connectToDatabase()
+    const result = await db
+      .collection('tareas')
+      .updateOne({ _id: new ObjectId(id) }, { $set: update })
 
-  if (result.matchedCount === 0) {
-    return Response.json({ error: 'Tarea no encontrada' }, { status: 404 })
+    if (result.matchedCount === 0) {
+      return NextResponse.json({ error: 'Tarea no encontrada' }, { status: 404 })
+    }
+
+    return NextResponse.json({ ok: true })
+  } catch {
+    resetConnection()
+    return NextResponse.json({ error: 'Base de datos no disponible' }, { status: 503 })
   }
-
-  return Response.json({ ok: true })
 }
 
 export async function DELETE(
@@ -41,17 +46,22 @@ export async function DELETE(
   const { id } = await ctx.params
 
   if (!ObjectId.isValid(id)) {
-    return Response.json({ error: 'ID inválido' }, { status: 400 })
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
   }
 
-  const db = await getDb()
-  const result = await db
-    .collection('tareas')
-    .deleteOne({ _id: new ObjectId(id) })
+  try {
+    const { db } = await connectToDatabase()
+    const result = await db
+      .collection('tareas')
+      .deleteOne({ _id: new ObjectId(id) })
 
-  if (result.deletedCount === 0) {
-    return Response.json({ error: 'Tarea no encontrada' }, { status: 404 })
+    if (result.deletedCount === 0) {
+      return NextResponse.json({ error: 'Tarea no encontrada' }, { status: 404 })
+    }
+
+    return NextResponse.json({ ok: true })
+  } catch {
+    resetConnection()
+    return NextResponse.json({ error: 'Base de datos no disponible' }, { status: 503 })
   }
-
-  return Response.json({ ok: true })
 }
