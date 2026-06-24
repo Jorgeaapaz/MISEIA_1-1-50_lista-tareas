@@ -190,3 +190,39 @@ lista-tareas/
 ├── jest.setup.ts                    — @testing-library/jest-dom setup
 └── playwright.config.ts             — Playwright config (Chromium, webServer)
 ```
+
+---
+
+## Updates — 2026-06-24 (paging)
+
+### New Feature: Pagination
+
+- Task list is now paginated at **5 items per page** (`ITEMS_POR_PAGINA = 5`).
+- **Anterior / Siguiente** navigation buttons appear below the list whenever there is more than one page.
+- A **"Página X de Y"** indicator is shown between the nav buttons.
+- Page resets to 1 automatically when a search is applied or cleared.
+- Page clamps to the last valid page when tasks are deleted and the current page becomes empty.
+
+### Updated Behavior: Conditional Search Visibility
+
+- The search panel is now **hidden** when the task list has **0 or 1 task** — there is nothing to filter.
+- The search panel is **shown** when there are **2 or more tasks**.
+
+### New File: `scripts/seed.js`
+
+Node.js script that populates the `tareas` collection with **27 sample tasks** (15 pending, 12 completed). Skips seeding if the collection already has ≥ 25 documents to prevent duplicates on repeated runs.
+
+```bash
+npm run seed
+```
+
+### Updated Test Counts
+
+| Suite | Before | After |
+|-------|--------|-------|
+| Jest unit tests (`filtrarTareas`) | 12 | 12 |
+| Jest component tests (`ListaTareas`) | 9 | 21 |
+| Playwright E2E tests | 9 | 19 |
+| **Total** | **30** | **52** |
+
+All 52 tests pass.
