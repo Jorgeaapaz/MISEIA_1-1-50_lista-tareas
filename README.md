@@ -1242,18 +1242,6 @@ gh secret set MONGODB_DB     --body "lista_tareas"
 
 **Pipeline CI/CD real:** El flujo test → build → deploy no es simulado — se ejecuta en GitHub Actions y despliega en un VM real de GCI. La caché BuildKit de GitHub Actions elimina el overhead de `npm ci` en builds subsecuentes.
 
-#### Limitaciones actuales
-
-**Sin autenticación:** Cualquier persona con acceso a la URL puede crear, editar y eliminar tareas. Esto es aceptable para un proyecto educativo pero inaceptable en producción con datos sensibles.
-
-**Tests E2E no corren en CI:** Playwright requiere browsers instalados y un servidor corriendo. La suite E2E solo se verifica localmente. Una falla en E2E no bloquea el merge a master.
-
-**Sin alta disponibilidad:** Un solo contenedor sin réplicas. Si el contenedor falla y el reinicio automático tarda, hay downtime observable. Para producción real se necesitaría al menos una segunda réplica con balanceo de carga en Traefik.
-
-**Backups de MongoDB no automatizados:** La base de datos en el VM GCI no tiene backup automático configurado. Una pérdida del volumen Docker implicaría pérdida de todos los datos de tareas.
-
-**Sin observabilidad avanzada:** Los logs son texto plano en Docker. No hay trazabilidad de peticiones (request IDs), alertas automáticas por error rate, ni dashboard de métricas (latencia, throughput, errores).
-
 #### Veredicto
 
 El proyecto cumple su objetivo educativo: demostrar un ciclo completo de desarrollo full-stack con Next.js 16, desde el scaffold hasta el despliegue en producción con CI/CD real y resiliencia ante fallos. Las decisiones técnicas son sólidas y justificadas con evidencia (benchmarks, análisis de opciones). Las limitaciones identificadas son aceptables para el alcance actual y representan el roadmap natural hacia un sistema de producción real.
