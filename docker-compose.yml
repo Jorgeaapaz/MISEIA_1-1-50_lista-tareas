@@ -1,0 +1,24 @@
+services:
+  lista-tareas:
+    image: ghcr.io/jorgeaapaz/miseia_1-1-50_lista-tareas:latest
+    container_name: miseia1150-listatareas
+    restart: unless-stopped
+    networks:
+      - miseia-net
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "30001"
+      HOSTNAME: "0.0.0.0"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=miseia-net"
+      - "traefik.http.routers.miseia1150-listatareas.rule=Host(`miseia1150_listatareas.deviaaps.com`)"
+      - "traefik.http.routers.miseia1150-listatareas.entrypoints=websecure"
+      - "traefik.http.routers.miseia1150-listatareas.tls=true"
+      - "traefik.http.routers.miseia1150-listatareas.tls.certresolver=cloudflare"
+      - "traefik.http.services.miseia1150-listatareas.loadbalancer.server.port=30001"
+
+networks:
+  miseia-net:
+    external: true
