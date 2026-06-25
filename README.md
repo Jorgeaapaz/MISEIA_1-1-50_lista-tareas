@@ -718,15 +718,15 @@ Acceptance Criteria:
 ```mermaid
 stateDiagram-v2
     [*] --> Iniciando
-    Iniciando --> Conectando : cargarTareas() llamado
-    Conectando --> Conectado : X-DB-Status: connected
-    Conectando --> Desconectado : timeout 3s / error de red
-    Conectado --> ListaMostrada : setTareas(data)
-    Desconectado --> FallbackMostrado : setTareas(MOCK_TAREAS)
-    FallbackMostrado --> BandaNaranja : setDbConectada(false)
-    BandaNaranja --> Reconectando : usuario pulsa "Reconnect"
-    Reconectando --> Conectando : resetConnection() + cargarTareas()
-    ListaMostrada --> Conectando : usuario pulsa "Reconnect"
+    Iniciando --> Conectando : cargarTareas
+    Conectando --> Conectado : DB conectada
+    Conectando --> Desconectado : timeout 3s
+    Conectado --> ListaMostrada : datos reales
+    Desconectado --> FallbackMostrado : datos de muestra
+    FallbackMostrado --> BandaNaranja : sin conexion
+    BandaNaranja --> Reconectando : pulsa Reconnect
+    Reconectando --> Conectando : resetConnection
+    ListaMostrada --> Conectando : pulsa Reconnect
 ```
 
 #### Operative Spec: Pipeline de Despliegue
