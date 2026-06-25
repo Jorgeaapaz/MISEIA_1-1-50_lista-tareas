@@ -91,10 +91,10 @@ Automatización completa del ciclo construir → validar → desplegar.
 lista-tareas/
 ├── .github/
 │   └── workflows/
-│       └── deploy.yml              # Pipeline CI/CD: tests → build Docker → deploy SSH
+│       └── deploy.yml              # Pipeline CI/CD: lint → tests → build Docker → deploy SSH
 ├── __tests__/
 │   ├── filtrarTareas.test.ts       # Tests unitarios de la función de filtrado
-│   └── ListaTareas.test.tsx        # 46 tests del componente principal (CRUD, búsqueda, PDF, BD)
+│   └── ListaTareas.test.tsx        # 46 tests del componente principal (búsqueda, paginación, PDF, BD)
 ├── app/
 │   ├── api/
 │   │   └── tareas/
@@ -102,7 +102,11 @@ lista-tareas/
 │   │       └── [id]/
 │   │           └── route.ts        # PUT (editar/completar) y DELETE (eliminar)
 │   ├── components/
-│   │   └── ListaTareas.tsx         # Componente cliente principal — toda la lógica de UI
+│   │   └── ListaTareas.tsx         # Componente cliente — orquesta hooks, renderiza JSX
+│   ├── hooks/
+│   │   ├── useTareas.ts            # CRUD, estado de BD, isLoading, editandoId
+│   │   ├── useBusqueda.ts          # Filtrado por título y estado, modal sin resultados
+│   │   └── usePaginacion.ts        # Paginación: página actual, tareas paginadas
 │   ├── globals.css                 # Estilos globales con Tailwind v4
 │   ├── layout.tsx                  # Layout raíz con metadatos
 │   └── page.tsx                    # Página raíz — monta <ListaTareas />
@@ -235,11 +239,9 @@ cd MISEIA_1-1-50_lista-tareas
 # 1. Instalar dependencias (usa el lockfile para instalación reproducible)
 npm ci
 
-# 2. Crear archivo de variables de entorno
-cat > .env.local << 'EOF'
-MONGODB_URI=mongodb://localhost:27017
-MONGODB_DB=lista_tareas
-EOF
+# 2. Crear archivo de variables de entorno a partir de la plantilla
+cp .env.example .env.local
+# Edita .env.local con tus credenciales reales de MongoDB
 
 # 3. (Opcional) Sembrar datos de prueba en MongoDB
 node scripts/seed.js
@@ -1015,6 +1017,9 @@ npm test
 
 # Para entornos CI
 npm test -- --passWithNoTests --forceExit
+
+# Reporte de cobertura
+npm run test:coverage
 ```
 
 **Resultado:** 46 tests pasando en 2 suites.
@@ -1024,6 +1029,22 @@ Test Suites: 2 passed, 2 total
 Tests:       46 passed, 46 total
 Snapshots:   0 total
 Time:        ~6s
+```
+
+### Cobertura de Tests (código de dominio)
+
+> Colección restringida a `app/components/` y `lib/filtrarTareas.ts`. Las API routes y `lib/mongodb.ts` requieren tests de integración con MongoDB real y se excluyen del reporte de cobertura unitaria.
+
+| Archivo | Statements | Branches | Funciones | Líneas |
+|---|---|---|---|---|
+| `lib/filtrarTareas.ts` | 100% | 100% | 100% | 100% |
+| `app/components/ListaTareas.tsx` | 84.87% | 94.11% | 50% | 84.87% |
+| **Global** | **85.6%** | **94.91%** | **52%** | **85.6%** |
+
+Umbral configurado: `lines ≥ 60%, functions ≥ 45%, branches ≥ 60%` — todos superados.
+
+```bash
+npm run test:coverage
 ```
 
 ### Archivos de test
@@ -1236,3 +1257,27 @@ gh secret set MONGODB_DB     --body "lista_tareas"
 #### Veredicto
 
 El proyecto cumple su objetivo educativo: demostrar un ciclo completo de desarrollo full-stack con Next.js 16, desde el scaffold hasta el despliegue en producción con CI/CD real y resiliencia ante fallos. Las decisiones técnicas son sólidas y justificadas con evidencia (benchmarks, análisis de opciones). Las limitaciones identificadas son aceptables para el alcance actual y representan el roadmap natural hacia un sistema de producción real.
+
+---
+
+## Updates — 2026-06-25
+
+### Nuevos archivos
+
+| Archivo | Descripción |
+|---|---|
+| `.env.example` | Plantilla pública de variables de entorno con placeholders; `cp .env.example .env.local` para empezar |
+| `app/hooks/useTareas.ts` | Custom hook con lógica CRUD, estado `isLoading`, `dbConectada` y `editandoId` extraída de `ListaTareas.tsx` |
+| `app/hooks/useBusqueda.ts` | Custom hook con lógica de búsqueda, filtrado por título y estado, y modal sin resultados |
+| `app/hooks/usePaginacion.ts` | Custom hook con lógica de paginación: página actual, total de páginas y slice de tareas visibles |
+
+### Archivos modificados
+
+| Archivo | Cambio |
+|---|---|
+| `app/components/ListaTareas.tsx` | Refactorizado: usa los 3 nuevos hooks; añadido skeleton de carga animado (`isLoading`) durante el fetch inicial; reducido de ~477 a ~240 líneas |
+| `.gitignore` | Añadida excepción `!.env.example` para permitir commitear la plantilla pública |
+| `.github/workflows/deploy.yml` | Añadido step `npm run lint` antes de `npm test` en el job `test`; el linter ahora bloquea el pipeline ante fallos |
+| `jest.config.ts` | Configurada cobertura: `collectCoverageFrom` (solo `app/components/` + `lib/filtrarTareas.ts`), `coverageThreshold` (`lines≥60, functions≥45, branches≥60`), `coverageReporters: ['text','lcov']` |
+| `package.json` | Añadido script `"test:coverage": "jest --coverage"` |
+| `README.md` | §2 Estructura actualizada con `app/hooks/`; §5 Instalación usa `cp .env.example`; §9 Añadida tabla de cobertura real (85.6% lines, 94.91% branches, 52% functions) |

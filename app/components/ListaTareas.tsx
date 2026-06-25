@@ -1,14 +1,10 @@
 'use client'
 
-import { useState, useEffect, useTransition } from 'react'
-import { filtrarTareas } from '@/lib/filtrarTareas'
-import type { FiltroCompletada, TerminosBusqueda } from '@/lib/filtrarTareas'
-
-interface Tarea {
-  _id: string
-  titulo: string
-  completada: boolean
-}
+import { useState } from 'react'
+import type { FiltroCompletada } from '@/lib/filtrarTareas'
+import { useTareas } from '@/app/hooks/useTareas'
+import { useBusqueda } from '@/app/hooks/useBusqueda'
+import { usePaginacion } from '@/app/hooks/usePaginacion'
 
 const ETIQUETA_ESTADO: Record<FiltroCompletada, string> = {
   todas: 'Todas',
@@ -16,122 +12,60 @@ const ETIQUETA_ESTADO: Record<FiltroCompletada, string> = {
   pendientes: 'Pendientes',
 }
 
-const ITEMS_POR_PAGINA = 5
-
 export default function ListaTareas() {
-  const [tareas, setTareas] = useState<Tarea[]>([])
   const [input, setInput] = useState('')
-  const [editandoId, setEditandoId] = useState<string | null>(null)
-  const [editandoTexto, setEditandoTexto] = useState('')
-  const [isPending, startTransition] = useTransition()
-  const [dbConectada, setDbConectada] = useState(true)
 
-  // Search state
-  const [busquedaTitulo, setBusquedaTitulo] = useState('')
-  const [busquedaCompletada, setBusquedaCompletada] = useState<FiltroCompletada>('todas')
-  const [terminosBusqueda, setTerminosBusqueda] = useState<TerminosBusqueda | null>(null)
-  const [modalVisible, setModalVisible] = useState(false)
+  const {
+    tareas,
+    isLoading,
+    dbConectada,
+    editandoId,
+    editandoTexto,
+    setEditandoTexto,
+    setEditandoId,
+    isPending,
+    cargarTareas,
+    agregarTarea,
+    toggleCompletada,
+    iniciarEdicion,
+    guardarEdicion,
+    eliminarTarea,
+  } = useTareas()
 
-  // Paging state
-  const [paginaActual, setPaginaActual] = useState(1)
+  const {
+    busquedaTitulo,
+    setBusquedaTitulo,
+    busquedaCompletada,
+    setBusquedaCompletada,
+    terminosBusqueda,
+    modalVisible,
+    setModalVisible,
+    tareasMostradas,
+    ejecutarBusqueda,
+    limpiarBusqueda,
+  } = useBusqueda(tareas)
 
-  useEffect(() => {
-    cargarTareas()
-  }, [])
-
-  const tareasMostradas =
-    terminosBusqueda !== null ? filtrarTareas(tareas, terminosBusqueda) : tareas
-
-  const totalPaginas = Math.max(1, Math.ceil(tareasMostradas.length / ITEMS_POR_PAGINA))
-
-  useEffect(() => {
-    setPaginaActual((p) => Math.min(p, totalPaginas))
-  }, [totalPaginas])
-
-  const tareasPaginadas = tareasMostradas.slice(
-    (paginaActual - 1) * ITEMS_POR_PAGINA,
-    paginaActual * ITEMS_POR_PAGINA,
-  )
+  const { paginaActual, setPaginaActual, totalPaginas, tareasPaginadas } =
+    usePaginacion(tareasMostradas)
 
   const pendientes = tareas.filter((t) => !t.completada).length
   const mostrarBusqueda = tareas.length > 1
 
-  async function cargarTareas(): Promise<void> {
-    const res = await fetch('/api/tareas')
-    const data = await res.json()
-    const connected = res.headers.get('x-db-status') === 'connected'
-    setDbConectada(connected)
-    if (Array.isArray(data)) {
-      setTareas(data)
-    }
-  }
-
-  async function agregarTarea(e: React.FormEvent): Promise<void> {
+  function handleAgregarTarea(e: React.FormEvent): void {
     e.preventDefault()
     if (!input.trim()) return
-
-    startTransition(async () => {
-      await fetch('/api/tareas', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ titulo: input }),
-      })
-      setInput('')
-      await cargarTareas()
-    })
+    agregarTarea(input)
+    setInput('')
   }
 
-  async function toggleCompletada(tarea: Tarea): Promise<void> {
-    await fetch(`/api/tareas/${tarea._id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ completada: !tarea.completada }),
-    })
-    setTareas((prev) =>
-      prev.map((t) =>
-        t._id === tarea._id ? { ...t, completada: !t.completada } : t,
-      ),
-    )
-  }
-
-  function iniciarEdicion(tarea: Tarea): void {
-    setEditandoId(tarea._id)
-    setEditandoTexto(tarea.titulo)
-  }
-
-  async function guardarEdicion(id: string): Promise<void> {
-    if (!editandoTexto.trim()) return
-    await fetch(`/api/tareas/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ titulo: editandoTexto }),
-    })
-    setTareas((prev) =>
-      prev.map((t) => (t._id === id ? { ...t, titulo: editandoTexto.trim() } : t)),
-    )
-    setEditandoId(null)
-  }
-
-  async function eliminarTarea(id: string): Promise<void> {
-    await fetch(`/api/tareas/${id}`, { method: 'DELETE' })
-    setTareas((prev) => prev.filter((t) => t._id !== id))
-  }
-
-  function buscar(e: React.FormEvent): void {
+  function handleBuscar(e: React.FormEvent): void {
     e.preventDefault()
-    const terminos: TerminosBusqueda = { titulo: busquedaTitulo, completada: busquedaCompletada }
-    setTerminosBusqueda(terminos)
+    ejecutarBusqueda()
     setPaginaActual(1)
-    if (filtrarTareas(tareas, terminos).length === 0) {
-      setModalVisible(true)
-    }
   }
 
-  function limpiarBusqueda(): void {
-    setBusquedaTitulo('')
-    setBusquedaCompletada('todas')
-    setTerminosBusqueda(null)
-    setModalVisible(false)
+  function handleLimpiarBusqueda(): void {
+    limpiarBusqueda()
     setPaginaActual(1)
   }
 
@@ -222,7 +156,7 @@ export default function ListaTareas() {
         </div>
 
         {/* Add task */}
-        <form onSubmit={agregarTarea} className="flex gap-2 mb-6">
+        <form onSubmit={handleAgregarTarea} className="flex gap-2 mb-6">
           <input
             type="text"
             value={input}
@@ -242,7 +176,7 @@ export default function ListaTareas() {
         {/* Search — hidden when list has 0 or 1 task */}
         {mostrarBusqueda && (
           <form
-            onSubmit={buscar}
+            onSubmit={handleBuscar}
             aria-label="Buscar tareas"
             className="flex flex-col gap-3 mb-6 p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800"
           >
@@ -285,7 +219,7 @@ export default function ListaTareas() {
               {terminosBusqueda !== null && (
                 <button
                   type="button"
-                  onClick={limpiarBusqueda}
+                  onClick={handleLimpiarBusqueda}
                   className="flex-1 rounded-lg border border-zinc-200 dark:border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-200 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-700"
                 >
                   Limpiar
@@ -303,73 +237,85 @@ export default function ListaTareas() {
           </p>
         )}
 
-        <ul className="space-y-2">
-          {tareasPaginadas.map((tarea) => (
-            <li
-              key={tarea._id}
-              className="flex items-center gap-3 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-3"
-            >
-              <input
-                type="checkbox"
-                checked={tarea.completada}
-                onChange={() => toggleCompletada(tarea)}
-                className="h-4 w-4 cursor-pointer accent-zinc-900 dark:accent-zinc-50"
+        {/* Loading skeleton */}
+        {isLoading ? (
+          <ul aria-label="Cargando tareas" className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <li
+                key={i}
+                className="h-12 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 animate-pulse motion-reduce:animate-none"
               />
-
-              {editandoId === tarea._id ? (
-                <input
-                  type="text"
-                  value={editandoTexto}
-                  onChange={(e) => setEditandoTexto(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') guardarEdicion(tarea._id)
-                    if (e.key === 'Escape') setEditandoId(null)
-                  }}
-                  autoFocus
-                  className="flex-1 rounded border border-zinc-300 dark:border-zinc-600 bg-transparent px-2 py-0.5 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-400"
-                />
-              ) : (
-                <span
-                  className={`flex-1 text-sm ${
-                    tarea.completada
-                      ? 'line-through text-zinc-400 dark:text-zinc-500'
-                      : 'text-zinc-900 dark:text-zinc-50'
-                  }`}
-                >
-                  {tarea.titulo}
-                </span>
-              )}
-
-              {editandoId === tarea._id ? (
-                <button
-                  onClick={() => guardarEdicion(tarea._id)}
-                  className="text-xs font-medium text-green-600 hover:text-green-700"
-                >
-                  Guardar
-                </button>
-              ) : (
-                <button
-                  onClick={() => iniciarEdicion(tarea)}
-                  className="text-xs font-medium text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                >
-                  Editar
-                </button>
-              )}
-
-              <button
-                onClick={() => eliminarTarea(tarea._id)}
-                className="text-xs font-medium text-red-400 hover:text-red-600"
+            ))}
+          </ul>
+        ) : (
+          <ul className="space-y-2">
+            {tareasPaginadas.map((tarea) => (
+              <li
+                key={tarea._id}
+                className="flex items-center gap-3 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-4 py-3"
               >
-                Eliminar
-              </button>
-            </li>
-          ))}
-          {tareasMostradas.length === 0 && terminosBusqueda === null && (
-            <li className="text-center py-10 text-zinc-400 dark:text-zinc-500 text-sm">
-              No hay tareas. ¡Agrega una!
-            </li>
-          )}
-        </ul>
+                <input
+                  type="checkbox"
+                  checked={tarea.completada}
+                  onChange={() => { void toggleCompletada(tarea) }}
+                  className="h-4 w-4 cursor-pointer accent-zinc-900 dark:accent-zinc-50"
+                />
+
+                {editandoId === tarea._id ? (
+                  <input
+                    type="text"
+                    value={editandoTexto}
+                    onChange={(e) => setEditandoTexto(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void guardarEdicion(tarea._id)
+                      if (e.key === 'Escape') setEditandoId(null)
+                    }}
+                    autoFocus
+                    className="flex-1 rounded border border-zinc-300 dark:border-zinc-600 bg-transparent px-2 py-0.5 text-zinc-900 dark:text-zinc-50 focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-400"
+                  />
+                ) : (
+                  <span
+                    className={`flex-1 text-sm ${
+                      tarea.completada
+                        ? 'line-through text-zinc-400 dark:text-zinc-500'
+                        : 'text-zinc-900 dark:text-zinc-50'
+                    }`}
+                  >
+                    {tarea.titulo}
+                  </span>
+                )}
+
+                {editandoId === tarea._id ? (
+                  <button
+                    onClick={() => { void guardarEdicion(tarea._id) }}
+                    className="text-xs font-medium text-green-600 hover:text-green-700"
+                  >
+                    Guardar
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => iniciarEdicion(tarea)}
+                    className="text-xs font-medium text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                  >
+                    Editar
+                  </button>
+                )}
+
+                <button
+                  onClick={() => { void eliminarTarea(tarea._id) }}
+                  className="text-xs font-medium text-red-400 hover:text-red-600"
+                >
+                  Eliminar
+                </button>
+              </li>
+            ))}
+            {tareasMostradas.length === 0 && terminosBusqueda === null && (
+              <li className="text-center py-10 text-zinc-400 dark:text-zinc-500 text-sm">
+                No hay tareas. ¡Agrega una!
+              </li>
+            )}
+          </ul>
+        )}
 
         {/* Pagination */}
         {totalPaginas > 1 && (
@@ -442,9 +388,7 @@ export default function ListaTareas() {
       )}
 
       {/* DB connection status icon — always visible, bottom-right */}
-      <div
-        className={`fixed right-4 z-50 ${!dbConectada ? 'bottom-16' : 'bottom-4'}`}
-      >
+      <div className={`fixed right-4 z-50 ${!dbConectada ? 'bottom-16' : 'bottom-4'}`}>
         <div
           aria-label={dbConectada ? 'Base de datos conectada' : 'Base de datos desconectada'}
           title={dbConectada ? 'Conectado a la base de datos' : 'Sin conexión a la base de datos'}
