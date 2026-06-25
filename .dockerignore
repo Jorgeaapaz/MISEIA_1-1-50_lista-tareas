@@ -1,0 +1,17 @@
+.git
+.github
+.gitignore
+node_modules
+.next
+.env*
+npm-debug.log*
+README.md
+AGENTS.md
+CLAUDE.md
+coverage
+playwright-report
+test-results
+__tests__
+e2e
+scripts
+prompts
